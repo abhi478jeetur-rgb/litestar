@@ -1,7 +1,7 @@
 # pyright: reportUnnecessaryTypeIgnoreComment=false
 
 from dataclasses import dataclass
-from typing import Annotated, Generic, Optional, TypeVar
+from typing import Annotated, Any, Generic, Optional, TypeVar
 
 import pytest
 from attr import define
@@ -88,6 +88,51 @@ def test_validation_failure_raises_400() -> None:
     assert response.json() == {
         "detail": "Validation failed for GET /?param=thirteen",
         "extra": [{"key": "param", "message": "Expected `int`, got `str`", "source": "query"}],
+        "status_code": 400,
+    }
+
+
+def test_missing_required_body_reports_missing_field() -> None:
+    @post("/required")
+    def required(data: JSONBody[dict[str, Any]]) -> None: ...
+
+    with create_test_client(route_handlers=[required]) as client:
+        response = client.post("/required")
+
+    assert response.json() == {
+        "detail": "Validation failed for POST /required",
+        "extra": [{"key": "data", "message": "Object missing required field `data`", "source": "body"}],
+        "status_code": 400,
+    }
+
+
+def test_missing_optional_body_is_not_reported_as_error() -> None:
+    @post("/optional")
+    def optional(limit: FromQuery[int], data: JSONBody[Optional[dict[str, Any]]] = None) -> None: ...
+
+    with create_test_client(route_handlers=[optional]) as client:
+        response = client.post("/optional?limit=abc")
+
+    assert response.json() == {
+        "detail": "Validation failed for POST /optional?limit=abc",
+        "extra": [{"key": "limit", "message": "Expected `int`, got `str`", "source": "query"}],
+        "status_code": 400,
+    }
+
+
+def test_missing_required_body_reported_alongside_other_errors() -> None:
+    @post("/mixed")
+    def mixed(limit: FromQuery[int], data: JSONBody[dict[str, Any]]) -> None: ...
+
+    with create_test_client(route_handlers=[mixed]) as client:
+        response = client.post("/mixed?limit=abc")
+
+    assert response.json() == {
+        "detail": "Validation failed for POST /mixed?limit=abc",
+        "extra": [
+            {"key": "limit", "message": "Expected `int`, got `str`", "source": "query"},
+            {"key": "data", "message": "Object missing required field `data`", "source": "body"},
+        ],
         "status_code": 400,
     }
 

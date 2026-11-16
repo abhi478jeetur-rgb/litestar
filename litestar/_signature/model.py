@@ -172,6 +172,14 @@ class SignatureModel(Struct):
     ) -> list[tuple[str, Exception]]:
         exceptions: list[tuple[str, Exception]] = []
         for field_name in cls._fields:
+            if field_name not in kwargs:
+                # The field was not provided at all, e.g. a missing request
+                # body. Optional fields fall back to their default, so only
+                # required fields are reported - and with a message that says
+                # what is missing instead of a bare 'data'.
+                if cls._fields[field_name].is_required:
+                    exceptions.append((field_name, ValidationError(f"Object missing required field `{field_name}`")))
+                continue
             try:
                 raw_value = kwargs[field_name]
                 annotation = cls.__annotations__[field_name]
